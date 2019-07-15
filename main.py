@@ -111,10 +111,10 @@ def validate(model,valid_loader,args):
 			if args.use_cuda ==1:
 				data,target = data.cuda(),target.cuda()
 			output = model(data)
-			get_top_5_acc(output,target)*100
+			get_top_k_acc(output,target,5)*100
 
 			correct = np.concatenate((correct,torch.eq(torch.argmax(output,dim=-1),target).cpu().numpy()))
-			correct_5 = np.append(correct_5,get_top_5_acc(output,target)*100)
+			correct_5 = np.append(correct_5,get_top_k_acc(output,target,5)*100)
 
 	top_1_acc = correct.mean()
 	top_5_acc = correct_5.mean()
@@ -136,7 +136,7 @@ def test(model,test_loader,args):
 				data,target = data.cuda(),target.cuda()
 			# pdb.set_trace()
 			output = model(data)
-			get_top_5_acc(output,target)*100
+			get_top_k_acc(output,target,5)*100
 
 			pred = torch.argmax(output,dim=-1)
 			for p,prediction in zip(id_,pred):
@@ -190,13 +190,16 @@ def train(model,optimizer,scheduler,criterion,dataloaders,args,cpt_folder,writer
 			correct = torch.eq(torch.argmax(output,dim=-1),target).cpu().numpy()
 
 			top_1_acc = float(correct.sum())/len(data)*100
-			top_5_acc = get_top_5_acc(output,target)*100
+			top_5_acc = get_top_k_acc(output,target,5)*100
 			loader.set_postfix(Train_loss = loss.item(), Top_1_acc = top_1_acc, Top_5_acc= top_5_acc)
 			writer.add_scalar('Accuracy/Top_1_training',top_1_acc,n_iter)
 			writer.add_scalar('Accuracy/Top_5_training',top_5_acc,n_iter)
 			writer.add_scalar('Learning_Rate/Per_batch',optimizer.param_groups[0]['lr'],n_iter)
+
+			if iter_>2:
+				break
 		save_cpt(model = model,optimizer = optimizer,cpt_folder = cpt_folder,n = n)
-		top_1_acc_val,top_5_acc_val = validate(model,valid_loader)
+		top_1_acc_val,top_5_acc_val = validate(model,valid_loader,args)
 		writer.add_scalar('Accuracy/Top_5_validation',top_5_acc_val,n)
 		writer.add_scalar('Accuracy/Top_1_validation',top_1_acc_val,n)
 
@@ -275,7 +278,6 @@ def main(args):
 	torch.manual_seed(args.seed)
 
 	# Create folder for saving checkpoints
-	cpt_log = args.checkpoint
 	cpt_folder = args.save +"/Supervised_checkpoints/"
 
 	if not os.path.exists(cpt_folder):
@@ -330,8 +332,8 @@ def main(args):
 		train_json = TRAIN_JSON
 		valid_json = VALID_JSON
 		print("Creating Dataset")
-		train_dataset = Naturalist_Dset(args.data + '/train_val2019',annotation_fname = train_json,transform=transforms.Compose(transformations))
-		valid_dataset = Naturalist_Dset(args.data + '/train_val2019',annotation_fname = valid_json,transform=transforms.Compose(transformations))
+		train_dataset = Naturalist_Dset(DATA_DIR+ '/train_val2019',annotation_fname = train_json,transform=transforms.Compose(transformations))
+		valid_dataset = Naturalist_Dset(DATA_DIR + '/train_val2019',annotation_fname = valid_json,transform=transforms.Compose(transformations))
 		
 		# Create Class balanced sampler
 		weights = class_balanced_sampler(train_dataset,train_json)
@@ -354,7 +356,7 @@ def main(args):
 			scheduler = None
 
 		dataloaders = [train_dataloader,valid_dataloader]
-		print("Initial Learning Rate: ",optimizer.param_groups[0]['params']['lr'] )
+		print("Initial Learning Rate: ",optimizer.param_groups[0]['lr'] )
 
 		#Train the model
 		train(model,optimizer,scheduler,criterion,dataloaders,args,cpt_folder,writer)
@@ -379,7 +381,6 @@ if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser(description='PyTorch Implementation of DeepCluster SUpervised Learning')
 
-	parser.add_argument('--data', metavar='DIR', help='path to dataset')
 	parser.add_argument('--arch', '-a', type=str, metavar='ARCH',
 						choices=['alexnet', 'vgg16','resnet','densenet'], default='resnet',
 						help='CNN architecture (default: alexnet)')

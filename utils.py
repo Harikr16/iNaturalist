@@ -18,7 +18,7 @@ import json
 from tqdm import tqdm
 import os
 import argparse
-import models
+# import models
 from config import *
 from PIL import Image
 from tensorboardX import SummaryWriter
